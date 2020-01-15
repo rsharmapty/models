@@ -195,7 +195,8 @@ class ObjectDetectionEvaluator(DetectionEvaluator):
 
   def _build_metric_names(self):
     """Builds a list with metric names."""
-
+    
+    unicode = str
     self._metric_names = [
         self._metric_prefix + 'Precision/mAP@{}IOU'.format(
             self._matching_iou_threshold)
@@ -337,6 +338,8 @@ class ObjectDetectionEvaluator(DetectionEvaluator):
         '<prefix if not empty>_PerformanceByCategory/
         mAP@<matching_iou_threshold>IOU/category'.
     """
+
+    unicode = str
     (per_class_ap, mean_ap, per_class_precision, per_class_recall,
      per_class_corloc, mean_corloc) = (
          self._evaluation.evaluate())
@@ -461,7 +464,7 @@ class ObjectDetectionEvaluator(DetectionEvaluator):
 class PascalDetectionEvaluator(ObjectDetectionEvaluator):
   """A class to evaluate detections using PASCAL metrics."""
 
-  def __init__(self, categories, matching_iou_threshold=0.5):
+  def __init__(self, categories, matching_iou_threshold=0.7):
     super(PascalDetectionEvaluator, self).__init__(
         categories,
         matching_iou_threshold=matching_iou_threshold,

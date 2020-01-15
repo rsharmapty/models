@@ -17,6 +17,8 @@ import collections
 import os
 import re
 import time
+import shutil
+import json
 
 import numpy as np
 import tensorflow as tf
@@ -222,6 +224,52 @@ def visualize_detection_results(result_dict,
   tf.logging.info('Detection visualizations written to summary with tag %s.',
                   tag)
 
+def _wrapper_best_saver(all_evaluator_metrics, at_step, checkpoint_dirs):
+  
+  all_evaluator_metrics = {key:float(value)for key,value in all_evaluator_metrics.items()}
+  checkpoint_dir = checkpoint_dirs[0]
+  best_check_path = os.path.join(checkpoint_dir,'best') 
+  
+  if not os.path.exists(best_check_path):
+    os.mkdir(best_check_path)
+
+  if os.path.exists(os.path.join(best_check_path,'best_ever.json')):
+    with open(os.path.join(best_check_path,'best_ever.json'), 'r') as f:
+      stored = json.load(f)
+    
+    for step, metrics in stored.items():
+      for key,value in metrics.items():     
+        if 'mAP@' in key:
+          if all_evaluator_metrics[key] > value:
+            # Copy the best checkpoint
+            shutil.copy(os.path.join(checkpoint_dir, "model.ckpt-"+str(at_step)+".data-00000-of-00001"), best_check_path) 
+            shutil.copy(os.path.join(checkpoint_dir, "model.ckpt-"+str(at_step)+".index"), best_check_path)
+            shutil.copy(os.path.join(checkpoint_dir, "model.ckpt-"+str(at_step)+".meta"), best_check_path)
+
+            # store metrics in json
+            to_store = {at_step: all_evaluator_metrics}
+            with open(os.path.join(best_check_path, 'best_ever.json'), 'w') as f:
+              json.dump(to_store, f, indent=2)
+            
+            # remove old checkpoint
+            for i in os.listdir(best_check_path):
+              if step in i:
+                os.unlink(os.path.join(best_check_path,i))
+
+  else:
+    for key, value in all_evaluator_metrics.items():
+      if "mAP@" in key:
+        if value > .2:
+                    
+          # Copy the checkpoint with average precision above 50%
+          shutil.copy(os.path.join(checkpoint_dir, "model.ckpt-"+str(at_step)+".data-00000-of-00001"), best_check_path) 
+          shutil.copy(os.path.join(checkpoint_dir, "model.ckpt-"+str(at_step)+".index"), best_check_path)
+          shutil.copy(os.path.join(checkpoint_dir, "model.ckpt-"+str(at_step)+".meta"), best_check_path)
+
+          # store metrics in json
+          to_store = {at_step: all_evaluator_metrics}
+          with open(os.path.join(best_check_path, 'best_ever.json'), 'w') as f:
+            json.dump(to_store, f, indent=2)
 
 def _run_checkpoint_once(tensor_dict,
                          evaluators=None,
@@ -389,6 +437,10 @@ def _run_checkpoint_once(tensor_dict,
           process_metrics_fn(checkpoint_number, all_evaluator_metrics,
                              checkpoint_file)
   sess.close()
+  at_step = tf.train.latest_checkpoint(checkpoint_dirs[0]).split('-')[-1]
+  print("at step", at_step)
+  _wrapper_best_saver(all_evaluator_metrics, at_step, checkpoint_dirs)
+
   return (global_step, all_evaluator_metrics)
 
 
@@ -521,7 +573,7 @@ def repeated_checkpoint_run(tensor_dict,
     time_to_next_eval = start + eval_interval_secs - time.time()
     if time_to_next_eval > 0:
       time.sleep(time_to_next_eval)
-
+  print("metrics", metrics)
   return metrics
 
 

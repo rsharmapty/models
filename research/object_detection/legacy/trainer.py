@@ -368,12 +368,16 @@ def train(create_tensor_dict_fn,
     summary_op = tf.summary.merge(list(summaries), name='summary_op')
 
     # Soft placement allows placing on CPU ops without GPU implementation.
+    # Assume that you have 12GB of GPU memory and want to allocate ~6GB:            Additionaly added to hold gpu allocation
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
     session_config = tf.ConfigProto(allow_soft_placement=True,
-                                    log_device_placement=False)
+                                    log_device_placement=False,
+                                    gpu_options=gpu_options)
 
     # Save checkpoints regularly.
     keep_checkpoint_every_n_hours = train_config.keep_checkpoint_every_n_hours
     saver = tf.train.Saver(
+        max_to_keep=5,#train_config.max_checkpoints_to_keep,                         # added because of train.proto
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours)
 
     # Create ops required to initialize the model from a given checkpoint.

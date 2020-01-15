@@ -374,7 +374,7 @@ def create_model_fn(detection_model_fn, configs, hparams, use_tpu=False,
           tf.trainable_variables(),
           include_patterns=include_variables,
           exclude_patterns=exclude_variables)
-
+      print('trainable_variables are', trainable_variables)                                                                              # print trainable variables
       clip_gradients_value = None
       if train_config.gradient_clipping_by_norm > 0:
         clip_gradients_value = train_config.gradient_clipping_by_norm

@@ -477,7 +477,7 @@ class HardExampleMiner(object):
 
   def __init__(self,
                num_hard_examples=64,
-               iou_threshold=0.7,
+               iou_threshold=0.95,
                loss_type='both',
                cls_loss_weight=0.05,
                loc_loss_weight=0.06,
