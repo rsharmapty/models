@@ -346,10 +346,17 @@ def define_keras_flags(
   flags.DEFINE_string(
       name='tpu', default='', help='TPU address to connect to.')
   flags.DEFINE_integer(
-      name='steps_per_loop', default=1,
-      help='Number of steps per graph-mode loop. Only training step happens '
+      name='steps_per_loop',
+      default=500,
+      help='Number of steps per training loop. Only training step happens '
       'inside the loop. Callbacks will not be called inside. Will be capped at '
       'steps per epoch.')
+  flags.DEFINE_boolean(
+      name='use_tf_while_loop',
+      default=True,
+      help='Whether to build a tf.while_loop inside the training loop on the '
+      'host. Setting it to True is critical to have peak performance on '
+      'TPU.')
   flags.DEFINE_boolean(
       name='use_tf_keras_layers', default=False,
       help='Whether to use tf.keras.layers instead of tf.python.keras.layers.'
@@ -364,6 +371,14 @@ def define_keras_flags(
     flags.DEFINE_string('optimizer', 'resnet50_default',
                         'Name of optimizer preset. '
                         '(mobilenet_default, resnet50_default)')
+    # TODO(kimjaehong): Replace as general hyper-params not only for mobilenet.
+    flags.DEFINE_float('initial_learning_rate_per_sample', 0.00007,
+                       'Initial value of learning rate per sample for '
+                       'mobilenet_default.')
+    flags.DEFINE_float('lr_decay_factor', 0.94,
+                       'Learning rate decay factor for mobilenet_default.')
+    flags.DEFINE_float('num_epochs_per_decay', 2.5,
+                       'Number of epochs per decay for mobilenet_default.')
   if pretrained_filepath:
     flags.DEFINE_string('pretrained_filepath', '',
                         'Pretrained file path.')

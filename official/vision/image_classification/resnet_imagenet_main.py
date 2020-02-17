@@ -84,13 +84,12 @@ def run(flags_obj):
   tf.keras.backend.set_image_data_format(data_format)
 
   # Configures cluster spec for distribution strategy.
-  num_workers = distribution_utils.configure_cluster(flags_obj.worker_hosts,
-                                                     flags_obj.task_index)
+  _ = distribution_utils.configure_cluster(flags_obj.worker_hosts,
+                                           flags_obj.task_index)
 
   strategy = distribution_utils.get_distribution_strategy(
       distribution_strategy=flags_obj.distribution_strategy,
       num_gpus=flags_obj.num_gpus,
-      num_workers=num_workers,
       all_reduce_alg=flags_obj.all_reduce_alg,
       num_packs=flags_obj.num_packs,
       tpu_address=flags_obj.tpu)
@@ -174,16 +173,13 @@ def run(flags_obj):
       optimizer = common.get_optimizer(lr_schedule)
       learning_rate_schedule_fn = common.learning_rate_schedule
     elif flags_obj.optimizer == 'mobilenet_default':
-      lr_decay_factor = 0.94
-      num_epochs_per_decay = 2.5
-      initial_learning_rate_per_sample = 0.000007
       initial_learning_rate = \
-          initial_learning_rate_per_sample * flags_obj.batch_size
+          flags_obj.initial_learning_rate_per_sample * flags_obj.batch_size
       optimizer = tf.keras.optimizers.SGD(
           learning_rate=tf.keras.optimizers.schedules.ExponentialDecay(
               initial_learning_rate,
-              decay_steps=steps_per_epoch * num_epochs_per_decay,
-              decay_rate=lr_decay_factor,
+              decay_steps=steps_per_epoch * flags_obj.num_epochs_per_decay,
+              decay_rate=flags_obj.lr_decay_factor,
               staircase=True),
           momentum=0.9)
     if flags_obj.fp16_implementation == 'graph_rewrite':

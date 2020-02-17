@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Run BERT on SQuAD 1.1 and SQuAD 2.0 in tf2.0."""
-
+"""Run BERT on SQuAD 1.1 and SQuAD 2.0 in TF 2.x."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,22 +25,20 @@ from absl import flags
 from absl import logging
 import tensorflow as tf
 
-# pylint: disable=unused-import,g-import-not-at-top,redefined-outer-name,reimported
 from official.modeling import model_training_utils
-from official.nlp import bert_modeling as modeling
-from official.nlp import bert_models
 from official.nlp import optimization
+from official.nlp.albert import configs as albert_configs
+from official.nlp.bert import bert_models
 from official.nlp.bert import common_flags
+from official.nlp.bert import configs as bert_configs
 from official.nlp.bert import input_pipeline
 from official.nlp.bert import model_saving_utils
-# word-piece tokenizer based squad_lib
 from official.nlp.bert import squad_lib as squad_lib_wp
-# sentence-piece tokenizer based squad_lib
 from official.nlp.bert import squad_lib_sp
 from official.nlp.bert import tokenization
 from official.utils.misc import distribution_utils
 from official.utils.misc import keras_utils
-from official.utils.misc import tpu_lib
+
 
 flags.DEFINE_enum(
     'mode', 'train_and_predict',
@@ -69,6 +66,10 @@ flags.DEFINE_bool(
     'do_lower_case', True,
     'Whether to lower case the input text. Should be True for uncased '
     'models and False for cased models.')
+flags.DEFINE_float(
+    'null_score_diff_threshold', 0.0,
+    'If null_score - best_non_null is greater than the threshold, '
+    'predict null. This is only used for SQuAD v2.')
 flags.DEFINE_bool(
     'verbose_logging', False,
     'If true, all of the warnings related to data processing will be printed. '
@@ -94,8 +95,8 @@ common_flags.define_common_bert_flags()
 FLAGS = flags.FLAGS
 
 MODEL_CLASSES = {
-    'bert': (modeling.BertConfig, squad_lib_wp, tokenization.FullTokenizer),
-    'albert': (modeling.AlbertConfig, squad_lib_sp,
+    'bert': (bert_configs.BertConfig, squad_lib_wp, tokenization.FullTokenizer),
+    'albert': (albert_configs.AlbertConfig, squad_lib_sp,
                tokenization.FullSentencePieceTokenizer),
 }
 
@@ -182,7 +183,7 @@ def predict_squad_customized(strategy, input_meta_data, bert_config,
     # Prediction always uses float32, even if training uses mixed precision.
     tf.keras.mixed_precision.experimental.set_policy('float32')
     squad_model, _ = bert_models.squad_model(
-        bert_config, input_meta_data['max_seq_length'], float_type=tf.float32)
+        bert_config, input_meta_data['max_seq_length'])
 
   checkpoint_path = tf.train.latest_checkpoint(FLAGS.model_dir)
   logging.info('Restoring checkpoints from %s', checkpoint_path)
@@ -250,7 +251,6 @@ def train_squad(strategy,
     squad_model, core_model = bert_models.squad_model(
         bert_config,
         max_seq_length,
-        float_type=tf.float16 if use_float16 else tf.float32,
         hub_module_url=FLAGS.hub_module_url)
     squad_model.optimizer = optimization.create_optimizer(
         FLAGS.learning_rate, steps_per_epoch * epochs, warmup_steps)
@@ -366,6 +366,8 @@ def predict_squad(strategy, input_meta_data):
       output_prediction_file,
       output_nbest_file,
       output_null_log_odds_file,
+      version_2_with_negative=version_2_with_negative,
+      null_score_diff_threshold=FLAGS.null_score_diff_threshold,
       verbose=FLAGS.verbose_logging)
 
 
@@ -383,8 +385,10 @@ def export_squad(model_export_path, input_meta_data):
     raise ValueError('Export path is not specified: %s' % model_export_path)
   bert_config = MODEL_CLASSES[FLAGS.model_type][0].from_json_file(
       FLAGS.bert_config_file)
-  squad_model, _ = bert_models.squad_model(
-      bert_config, input_meta_data['max_seq_length'], float_type=tf.float32)
+  # Export uses float32 for now, even if training uses mixed precision.
+  tf.keras.mixed_precision.experimental.set_policy('float32')
+  squad_model, _ = bert_models.squad_model(bert_config,
+                                           input_meta_data['max_seq_length'])
   model_saving_utils.export_bert_model(
       model_export_path, model=squad_model, checkpoint_dir=FLAGS.model_dir)
 
@@ -400,12 +404,17 @@ def main(_):
     export_squad(FLAGS.model_export_path, input_meta_data)
     return
 
+  # Configures cluster spec for multi-worker distribution strategy.
+  if FLAGS.num_gpus > 0:
+    _ = distribution_utils.configure_cluster(FLAGS.worker_hosts,
+                                             FLAGS.task_index)
   strategy = distribution_utils.get_distribution_strategy(
       distribution_strategy=FLAGS.distribution_strategy,
       num_gpus=FLAGS.num_gpus,
+      all_reduce_alg=FLAGS.all_reduce_alg,
       tpu_address=FLAGS.tpu)
   if FLAGS.mode in ('train', 'train_and_predict'):
-    train_squad(strategy, input_meta_data)
+    train_squad(strategy, input_meta_data, run_eagerly=FLAGS.run_eagerly)
   if FLAGS.mode in ('predict', 'train_and_predict'):
     predict_squad(strategy, input_meta_data)
 
